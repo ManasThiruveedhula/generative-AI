@@ -1,0 +1,58 @@
+[
+  {
+    "question": "What is the distribution of customers by gender and preferred communication channel?",
+    "query": "with cte as ( select coalesce(gender, 'prefer not to say') as gender, coalesce(preferred_channel, 'other') as preferred_channel, age from customers ) select gender, preferred_channel, count(*) as total_customers, avg(age) as avg_age from cte group by gender, preferred_channel order by total_customers desc;"
+  },
+  {
+    "question": "How many customers are located in each city and state?",
+    "query": "select coalesce(city, 'unknown') as city, coalesce(state, 'unknown') as state, count(*) as customer_count from customers group by coalesce(city, 'unknown'), coalesce(state, 'unknown') order by customer_count desc;"
+  },
+  {
+    "question": "Who are the top 10 customers based on total spending?",
+    "query": "select top 10 t.customer_id, c.full_name, count(t.transaction_id) as total_orders, sum(t.quantity * t.price) as total_spent, avg(t.quantity * t.price) as avg_order_value from transactions t join customers c on t.customer_id = c.customer_id group by t.customer_id, c.full_name order by total_spent desc;"
+  },
+  {
+    "question": "Which product categories are purchased the most?",
+    "query": "select coalesce(product_category, 'other') as product_category, count(*) as purchases, cast(sum(quantity) as int) as units_sold, sum(quantity * price) as revenue from transactions group by coalesce(product_category, 'other') order by units_sold desc;"
+  },
+  {
+    "question": "What are the top customer engagement channels?",
+    "query": "select coalesce(channel,'other') as channel, count(*) as interactions from interactions group by coalesce(channel,'other') order by interactions desc;"
+  },
+  {
+    "question": "Which products are frequently purchased together?",
+    "query": "select t1.product_name as product_A, t2.product_name as product_B, count(*) as frequency from transactions t1 join transactions t2 on t1.customer_id = t2.customer_id and t1.product_name != t2.product_name group by t1.product_name, t2.product_name order by frequency desc;"
+  },
+  {
+    "question": "Which engagement channels have highest interactions by type?",
+    "query": "select coalesce(channel, 'other') as channel, coalesce(interaction_type, 'other') as interaction_type, count(*) as interactions, avg(duration) as avg_duration from interactions group by coalesce(channel, 'other'), coalesce(interaction_type, 'other') order by interactions desc;"
+  },
+  {
+    "question": "How effective were marketing campaigns in generating purchases?",
+    "query": "select coalesce(cp.campaign_name, 'other') as campaign_name, count(distinct t.customer_id) as customers_who_bought, sum(t.quantity * t.price) as revenue_from_campaign from marketing_campaigns cp join transactions t on t.transaction_date between cp.start_date and cp.end_date join customers c on c.customer_id = t.customer_id group by coalesce(cp.campaign_name, 'other') order by revenue_from_campaign desc;"
+  },
+  {
+    "question": "What is the count of new vs returning customers over time?",
+    "query": "with first_purchase as ( select customer_id, min(transaction_date) as first_date from transactions group by customer_id ) select month(t.transaction_date) as month, year(t.transaction_date) as year, sum(case when t.transaction_date = fp.first_date then 1 else 0 end) as new_customers, sum(case when t.transaction_date <> fp.first_date then 1 else 0 end) as returning_customers from transactions t join first_purchase fp on t.customer_id = fp.customer_id group by year(t.transaction_date), month(t.transaction_date) order by 2, 1;"
+  },
+  {
+    "question": "Which customers are active or churned based on last year's activity?",
+    "query": "with last_purchase as ( select customer_id, max(transaction_date) as last_purchase_date from transactions group by customer_id ) select c.customer_id, c.full_name, c.email, c.phone, lp.last_purchase_date, case when lp.last_purchase_date <= dateadd(day, -365, getdate()) then 'churned' else 'active' end as churn_status from customers c left join last_purchase lp on c.customer_id = lp.customer_id where lp.last_purchase_date is not null order by churn_status asc, lp.last_purchase_date;"
+  },
+  {
+    "question": "How many days have passed since each customer's last purchase?",
+    "query": "select c.customer_id, coalesce(c.full_name, 'unknown') as full_name, max(t.transaction_date) as last_transaction_date, datediff(day, max(t.transaction_date), getdate()) as days_since_last_active from customers c left join transactions t on t.customer_id = c.customer_id where t.transaction_date is not null group by c.customer_id, c.full_name order by days_since_last_active asc;"
+  },
+  {
+    "question": "What is the monthly revenue by product category?",
+    "query": "select month(transaction_date) as month, year(transaction_date) as year, coalesce(product_category, 'other') as product_category, cast(coalesce(sum(quantity * price), 0) as decimal(10,2)) as revenue from transactions group by month(transaction_date), year(transaction_date), coalesce(product_category, 'other') order by 2, 1, revenue desc;"
+  },
+  {
+    "question": "List all campaigns along with their total budget. For each campaign, calculate the 'Acquired Customer Revenue'\u2014which is the total spend from customers who actually registered during that campaign's active dates. Order the result by the highest revenue generated.",
+    "query": "WITH AcquiredCustomers AS (     SELECT         c.campaign_id,         cust.customer_id     FROM         campaign c     JOIN         customer cust ON cust.registration_date BETWEEN c.start_date AND c.end_date ), CustomerCampaignTransactions AS (     SELECT         ac.campaign_id,         t.customer_id,         t.quantity,         t.price,         t.transaction_date     FROM         AcquiredCustomers ac     JOIN         [transaction] t ON ac.customer_id = t.customer_id ), CampaignRevenue AS (     SELECT         cct.campaign_id,         SUM(ISNULL(cct.quantity, 0) * ISNULL(cct.price, 0)) AS acquired_customer_revenue     FROM         CustomerCampaignTransactions cct     JOIN         campaign camp ON cct.campaign_id = camp.campaign_id     WHERE         cct.transaction_date BETWEEN camp.start_date AND camp.end_date     GROUP BY         cct.campaign_id ) SELECT     camp.campaign_name,     camp.budget,     ISNULL(cr.acquired_customer_revenue, 0) AS acquired_customer_revenue FROM     campaign camp LEFT JOIN     CampaignRevenue cr ON camp.campaign_id = cr.campaign_id ORDER BY     acquired_customer_revenue DESC;"
+  },
+  {
+    "question": "List all campaigns along with their total budget. For each campaign, calculate the 'Acquired Customer Revenue'\u2014which is the total spend from customers who actually registered during that campaign's active dates. Order the result by the highest revenue generated.",
+    "query": "WITH AcquiredCustomers AS (     SELECT         c.campaign_id,         c.campaign_name,         c.budget,         CAST(c.start_date AS DATETIME) AS campaign_start_date,         CAST(c.end_date AS DATETIME) AS campaign_end_date,         cust.customer_id     FROM         campaign c     JOIN         customer cust ON cust.registration_date >= CAST(c.start_date AS DATETIME) AND cust.registration_date <= CAST(c.end_date AS DATETIME) ), CustomerCampaignTransactions AS (     SELECT         ac.campaign_id,         ac.campaign_name,         ac.budget,         ac.customer_id,         t.quantity,         t.price,         t.transaction_date,         ac.campaign_start_date,         ac.campaign_end_date     FROM         AcquiredCustomers ac     LEFT JOIN         [transaction] t ON ac.customer_id = t.customer_id ), CampaignRevenue AS (     SELECT         cct.campaign_id,         cct.campaign_name,         cct.budget,         SUM(CASE             WHEN cct.transaction_date IS NULL THEN 0             ELSE ISNULL(cct.quantity, 0) * ISNULL(cct.price, 0)         END) AS acquired_customer_revenue     FROM         CustomerCampaignTransactions cct     WHERE         cct.transaction_date IS NULL OR (cct.transaction_date >= cct.campaign_start_date AND cct.transaction_date <= cct.campaign_end_date)     GROUP BY         cct.campaign_id,         cct.campaign_name,         cct.budget ) SELECT     cr.campaign_name,     cr.budget,     cr.acquired_customer_revenue FROM     CampaignRevenue cr ORDER BY     cr.acquired_customer_revenue DESC;"
+  }
+]

@@ -1,0 +1,103 @@
+# SQL AGENT PIPELINE FLOW DIAGRAM
+
+    +---------------------------------------------------------------+
+    |                      1. USER ENTRY POINT                      |
+    +---------------------------------------------------------------+
+    |                                                               |
+    |   User Question: "List all campaigns along with..."           |
+    |                                                               |
+    +-----------------------------+---------------------------------+
+                                  |
+                                  v
+    +---------------------------------------------------------------+
+    |                2. CONTEXT ENRICHMENT (RAG)                    |
+    |  (Function: similarity_search / setup_vector_db)              |
+    +-----------------------------+---------------------------------+
+    |                             |                                 |
+    |  [ChromaDB]                 |  Retrieve top k=2 similar       |
+    |  Vector Store     <-------->|  SQL examples based on          |
+    |  (Gemini Embeddings)        |  semantic similarity            |
+    |                             |                                 |
+    +-----------------------------+---------------------------------+
+                                  |
+                                  v
+    +---------------------------------------------------------------+
+    |                   3. SYSTEM PROMPT CONSTRUCTION               |
+    +---------------------------------------------------------------+
+    | Combine:                                                      |
+    | 1. SQL_AGENT_PROMPT (System Instructions)                     |
+    | 2. SQL Dialect (MSSQL via ODBC)                               |
+    | 3. RAG Retrieved Examples (Few-Shot Learning)                 |
+    +-----------------------------+---------------------------------+
+                                  |
+                                  v
+    +---------------------------------------------------------------+
+    |                   4. AGENT REASONING LOOP                     |
+    |          (Class: Agent, Model: gemini-2.5-flash)              |
+    +---------------------------------------------------------------+
+    |                                                               |
+    |      <--- (Recursion via function_response_parts) ----+       |
+    |      |                                                |       |
+    |  +---+--------------------------------------------+   |       |
+    |  |        DECISION ENGINE (Tool Selection)        |   |       |
+    |  |  Config: Mode=VALIDATED, Max Tool Use=5        |   |       |
+    |  +---+---------------------------+----------------+   |       |
+    |      |                           |                    |       |
+    |      v                           v                    |       |
+    |  [TOOL CALL DETECTED]      [FINAL ANSWER]             |       |
+    |      |                           |                    |       |
+    +------+---------------------------+--------------------+-------+
+           |                           |
+           v                           |
+    +-----------------------+          |
+    |   5. TOOL EXECUTION   |          |
+    +-----------------------+          |
+    |                       |          |
+    |  A. SCHEMA DISCOVERY  |          |
+    |  +-----------------+  |          |
+    |  | get_table_names |  |          |
+    |  +-----------------+  |          |
+    |  | get_schema      |  |          |
+    |  +-----------------+  |          |
+    |                       |          |
+    |  B. STRATEGY          |          |
+    |  +-----------------+  |          |
+    |  | sql_planner     |  |          |
+    |  +-----------------+  |          |
+    |  (Decomposes query    |          |
+    |   into JSON steps)    |          |
+    |                       |          |
+    |  C. GENERATION & QA   |          |
+    |  +-----------------+  |          |
+    |  | query_checker   |  |          |
+    |  +-----------------+  |          |
+    |  (Validates Syntax    |          |
+    |   using gemini-2.0)   |          |
+    |                       |          |
+    |  D. EXECUTION         |          |
+    |  +-----------------+  |          |
+    |  | run_query       |  |          |
+    |  +-----------------+  |          |
+    |  (SQLAlchemy Exec)    |          |
+    |                       |          |
+    +----------+------------+          |
+               |                       |
+               +-----------------------+
+                                       |
+                                       v
+    +---------------------------------------------------------------+
+    |                      6. FINAL OUTPUT                          |
+    |                 (Tool: final_result_function)                 |
+    +---------------------------------------------------------------+
+    |                                                               |
+    |  Returns Dictionary:                                          |
+    |  {                                                            |
+    |    "question": "Original Question",                           |
+    |    "sql_query": "SELECT * FROM...",                           |
+    |    "explanation": "Natural language summary of results"       |
+    |  }                                                            |
+    |                                                               |
+    |  Action: Save to JSON_FILE for future references              |
+    |        (Auto-training loop)                                   |
+    |                                                               |
+    +---------------------------------------------------------------+
